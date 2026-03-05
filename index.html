@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eye Page Turner (Web Demo)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; padding: 12px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #bbb; background: #f7f7f7; cursor: pointer; }
+    button:active { transform: scale(0.99); }
+    input[type="range"] { width: 220px; }
+    #pdfCanvas { max-width: 100%; width: 820px; background: #fff; }
+    #video { width: 240px; border-radius: 12px; background: #111; }
+    .small { font-size: 12px; color: #444; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
+    .badge { display:inline-block; padding: 4px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+  </style>
+
+  <!-- PDF.js -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.min.js"></script>
+
+  <!-- MediaPipe FaceMesh + utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+
+<body>
+  <h2>Eye Page Turner — Web Demo (iPad Air 5)</h2>
+  <div class="small">
+    Tip: On iPad, open this page over <b>HTTPS</b> (GitHub Pages) or camera won’t start.
+  </div>
+
+  <div class="row" style="margin-top: 12px;">
+    <div class="card">
+      <div style="display:flex; gap:8px; flex-wrap: wrap;">
+        <input id="pdfInput" type="file" accept="application/pdf" />
+        <button id="prevBtn">◀ Prev</button>
+        <button id="nextBtn">Next ▶</button>
+        <span class="badge">Page: <span id="pageNum">-</span>/<span id="pageCount">-</span></span>
+      </div>
+      <canvas id="pdfCanvas"></canvas>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button id="startCamBtn">Start Camera</button>
+        <button id="stopCamBtn" disabled>Stop</button>
+        <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <video id="video" playsinline></video>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <div class="small"><b>Baseline trigger:</b> “Look RIGHT and hold”</div>
+        <div class="small">Threshold: <span id="thrVal">0.22</span></div>
+        <input id="thr" type="range" min="0.05" max="0.50" step="0.01" value="0.22" />
+
+        <div class="small" style="margin-top:10px;">Hold time (ms): <span id="holdVal">650</span></div>
+        <input id="hold" type="range" min="200" max="1200" step="10" value="650" />
+
+        <div class="small" style="margin-top:10px;">Cooldown (ms): <span id="coolVal">2000</span></div>
+        <input id="cool" type="range" min="500" max="5000" step="50" value="2000" />
+      </div>
+
+      <hr style="margin: 14px 0; border: none; border-top: 1px solid #eee;" />
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <span class="badge">Recording: <span id="recState">OFF</span></span>
+        <button id="toggleRecBtn">Start Recording</button>
+        <button id="labelNextBtn" disabled>Label NEXT (tap)</button>
+        <button id="downloadCsvBtn" disabled>Download CSV</button>
+      </div>
+
+      <div class="small" style="margin-top:10px;">
+        This saves <b>numbers</b> (features) per frame, not images.
+      </div>
+
+      <div id="debug" class="mono" style="margin-top:10px;">debug: -</div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // PDF Viewer (PDF.js)
+    // -----------------------------
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.worker.min.js";
+
+    const pdfInput = document.getElementById("pdfInput");
+    const pdfCanvas = document.getElementById("pdfCanvas");
+    const ctx = pdfCanvas.getContext("2d");
+
+    let pdfDoc = null;
+    let currentPage = 1;
+    let pageRendering = false;
+    let pendingPage = null;
+
+    const pageNumEl = document.getElementById("pageNum");
+    const pageCountEl = document.getElementById("pageCount");
+
+    async function renderPage(num) {
+      if (!pdfDoc) return;
+      pageRendering = true;
+
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale: 1.3 });
+
+      pdfCanvas.width = Math.floor(viewport.width);
+      pdfCanvas.height = Math.floor(viewport.height);
+
+      const renderContext = { canvasContext: ctx, viewport };
+      await page.render(renderContext).promise;
+
+      pageRendering = false;
+      pageNumEl.textContent = String(currentPage);
+      pageCountEl.textContent = String(pdfDoc.numPages);
+
+      if (pendingPage !== null) {
+        const n = pendingPage;
+        pendingPage = null;
+        renderPage(n);
+      }
+    }
+
+    function queueRender(num) {
+      if (pageRendering) pendingPage = num;
+      else renderPage(num);
+    }
+
+    async function loadPdfFromFile(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      currentPage = 1;
+      queueRender(currentPage);
+    }
+
+    pdfInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (file) loadPdfFromFile(file);
+    });
+
+    document.getElementById("prevBtn").addEventListener("click", () => {
+      if (!pdfDoc) return;
+      if (currentPage <= 1) return;
+      currentPage--;
+      queueRender(currentPage);
+    });
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      turnNextPage();
+    });
+
+    function turnNextPage() {
+      if (!pdfDoc) return;
+      if (currentPage >= pdfDoc.numPages) return;
+      currentPage++;
+      queueRender(currentPage);
+    }
+
+    // -----------------------------
+    // Face Mesh + Baseline "look-right" trigger
+    // -----------------------------
+    const videoEl = document.getElementById("video");
+    const debugEl = document.getElementById("debug");
+
+    const thr = document.getElementById("thr");
+    const hold = document.getElementById("hold");
+    const cool = document.getElementById("cool");
+    const thrVal = document.getElementById("thrVal");
+    const holdVal = document.getElementById("holdVal");
+    const coolVal = document.getElementById("coolVal");
+
+    function syncSliders() {
+      thrVal.textContent = thr.value;
+      holdVal.textContent = hold.value;
+      coolVal.textContent = cool.value;
+    }
+    thr.addEventListener("input", syncSliders);
+    hold.addEventListener("input", syncSliders);
+    cool.addEventListener("input", syncSliders);
+    syncSliders();
+
+    let camera = null;
+    let autoEnabled = false;
+    let lastTurnMs = 0;
+    let lookRightStartMs = null;
+
+    const autoState = document.getElementById("autoState");
+    function setAuto(on) {
+      autoEnabled = on;
+      autoState.textContent = on ? "ON" : "OFF";
+      autoState.style.fontWeight = on ? "700" : "400";
+    }
+
+    // Recording numeric data (features)
+    let recording = false;
+    let rows = [];
+    const recState = document.getElementById("recState");
+    const toggleRecBtn = document.getElementById("toggleRecBtn");
+    const labelNextBtn = document.getElementById("labelNextBtn");
+    const downloadCsvBtn = document.getElementById("downloadCsvBtn");
+
+    function setRecording(on) {
+      recording = on;
+      recState.textContent = on ? "ON" : "OFF";
+      toggleRecBtn.textContent = on ? "Stop Recording" : "Start Recording";
+      labelNextBtn.disabled = !on;
+      downloadCsvBtn.disabled = rows.length === 0;
+    }
+
+    toggleRecBtn.addEventListener("click", () => {
+      if (!recording) {
+        rows = [];
+        setRecording(true);
+      } else {
+        setRecording(false);
+        downloadCsvBtn.disabled = rows.length === 0;
+      }
+    });
+
+    // We'll label NEXT by stamping the most recent ~1s window as "NEXT_WINDOW"
+    // Simpler for v1: add a "label" column per frame, and when you tap NEXT,
+    // we retroactively label last 30 frames as NEXT.
+    labelNextBtn.addEventListener("click", () => {
+      const now = performance.now();
+      const windowMs = 1000; // 1 second
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (now - rows[i].t_ms > windowMs) break;
+        rows[i].label = "NEXT";
+      }
+      downloadCsvBtn.disabled = rows.length === 0;
+    });
+
+    downloadCsvBtn.addEventListener("click", () => {
+      if (rows.length === 0) return;
+      const header = ["t_ms","gaze_x","blink_l","blink_r","face_cx","face_cy","label"];
+      const lines = [header.join(",")];
+      for (const r of rows) {
+        lines.push([
+          r.t_ms.toFixed(1),
+          r.gaze_x.toFixed(4),
+          r.blink_l.toFixed(4),
+          r.blink_r.toFixed(4),
+          r.face_cx.toFixed(4),
+          r.face_cy.toFixed(4),
+          r.label
+        ].join(","));
+      }
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "eye_page_turner_features.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // Eye landmarks indices (MediaPipe FaceMesh)
+    // Left eye corners: 33 (outer), 133 (inner)
+    // Right eye corners: 362 (outer), 263 (inner)
+    // Iris centers (with refineLandmarks: true):
+    // Left iris approx center: 468, Right iris approx center: 473
+    // Blink proxy using eye aspect ratio points:
+    // Left: upper 159, lower 145. Right: upper 386, lower 374.
+    function dist(a, b) {
+      const dx = a.x - b.x, dy = a.y - b.y;
+      return Math.hypot(dx, dy);
+    }
+
+    function computeFeatures(lm) {
+      // Face center proxy (using landmark 1 as near nose bridge)
+      const face = lm[1];
+      const face_cx = face.x;
+      const face_cy = face.y;
+
+      // Gaze proxy: compare iris x position within eye corners
+      const leftOuter = lm[33], leftInner = lm[133], leftIris = lm[468];
+      const rightOuter = lm[362], rightInner = lm[263], rightIris = lm[473];
+
+      // Normalize iris position inside each eye
+      const leftEyeWidth = Math.max(1e-6, dist(leftOuter, leftInner));
+      const rightEyeWidth = Math.max(1e-6, dist(rightOuter, rightInner));
+
+      // For left eye: outer->inner is increasing toward nose; we want "look right" overall,
+      // so we average both eyes in a consistent direction:
+      // Define gaze_x positive when looking to the user's right (screen right).
+      // For left eye, screen-right corresponds to iris moving toward outer corner (33).
+      const leftEyeCenterX = (leftOuter.x + leftInner.x) / 2;
+      const rightEyeCenterX = (rightOuter.x + rightInner.x) / 2;
+
+      const leftG = (leftEyeCenterX - leftIris.x) / leftEyeWidth;   // iris toward outer => positive
+      const rightG = (rightIris.x - rightEyeCenterX) / rightEyeWidth; // iris toward outer (362) => negative usually, so flip:
+      const gaze_x = (leftG + (-rightG)) / 2;
+
+      // Blink proxy (eye aspect ratio-ish): smaller vertical distance => more closed
+      const blink_l = dist(lm[159], lm[145]) / leftEyeWidth;
+      const blink_r = dist(lm[386], lm[374]) / rightEyeWidth;
+
+      return { gaze_x, blink_l, blink_r, face_cx, face_cy };
+    }
+
+    const faceMesh = new FaceMesh.FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,    // enables iris landmarks
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    faceMesh.onResults((results) => {
+      const now = performance.now();
+
+      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        debugEl.textContent = "debug: no face";
+        lookRightStartMs = null;
+        return;
+      }
+
+      const lm = results.multiFaceLandmarks[0];
+      const f = computeFeatures(lm);
+
+      // Record per-frame numeric data (no images)
+      if (recording) {
+        rows.push({
+          t_ms: now,
+          ...f,
+          label: "NONE",
+        });
+        // Keep it bounded (optional)
+        if (rows.length > 20000) rows.splice(0, 2000);
+        downloadCsvBtn.disabled = rows.length === 0;
+      }
+
+      // Baseline "look-right hold" trigger
+      const threshold = parseFloat(thr.value);
+      const holdMs = parseInt(hold.value, 10);
+      const cooldownMs = parseInt(cool.value, 10);
+
+      const inCooldown = (now - lastTurnMs) < cooldownMs;
+
+      if (autoEnabled && !inCooldown) {
+        if (f.gaze_x > threshold) {
+          if (lookRightStartMs === null) lookRightStartMs = now;
+          const held = now - lookRightStartMs;
+          if (held >= holdMs) {
+            turnNextPage();
+            lastTurnMs = now;
+            lookRightStartMs = null;
+          }
+        } else {
+          lookRightStartMs = null;
+        }
+      } else {
+        lookRightStartMs = null;
+      }
+
+      debugEl.textContent =
+        `debug:
+gaze_x=${f.gaze_x.toFixed(3)} (thr=${threshold.toFixed(2)})
+blink_l=${f.blink_l.toFixed(3)}  blink_r=${f.blink_r.toFixed(3)}
+face_cx=${f.face_cx.toFixed(3)}  face_cy=${f.face_cy.toFixed(3)}
+auto=${autoEnabled} cooldown=${inCooldown}`;
+    });
+
+    async function startCamera() {
+      // MediaPipe camera util drives frames into FaceMesh
+      camera = new CameraUtils.Camera(videoEl, {
+        onFrame: async () => {
+          await faceMesh.send({ image: videoEl });
+        },
+        width: 640,
+        height: 480,
+      });
+      await camera.start();
+      setAuto(true);
+      document.getElementById("startCamBtn").disabled = true;
+      document.getElementById("stopCamBtn").disabled = false;
+    }
+
+    async function stopCamera() {
+      setAuto(false);
+      if (camera) {
+        camera.stop();
+        camera = null;
+      }
+      // also stop tracks if any
+      const stream = videoEl.srcObject;
+      if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
+      videoEl.srcObject = null;
+
+      document.getElementById("startCamBtn").disabled = false;
+      document.getElementById("stopCamBtn").disabled = true;
+    }
+
+    document.getElementById("startCamBtn").addEventListener("click", startCamera);
+    document.getElementById("stopCamBtn").addEventListener("click", stopCamera);
+
+    // Optional: load a sample PDF via URL later if you want.
+  </script>
+</body>
+</html>
