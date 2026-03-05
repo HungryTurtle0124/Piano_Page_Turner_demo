@@ -12,7 +12,8 @@
     button:active { transform: scale(0.99); }
     input[type="range"] { width: 220px; }
     #pdfCanvas { max-width: 100%; width: 820px; background: #fff; }
-    #video { width: 240px; border-radius: 12px; background: #111; }
+    #video { width: 240px; border-radius: 12px; background: #111; transform: scaleX(-1); }
+    #overlay { transform: scaleX(-1); }
     .small { font-size: 12px; color: #444; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
     .badge { display:inline-block; padding: 4px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
@@ -56,8 +57,10 @@
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
       </div>
 
-      <div style="margin-top: 10px;">
+      <div style="margin-top: 10px; position: relative; width: 240px;">
         <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"
+                style="position:absolute; left:0; top:0; width:240px; height:auto; pointer-events:none;"></canvas>                
       </div>
 
       <div style="margin-top: 10px;">
@@ -100,8 +103,16 @@
     const videoEl = document.getElementById("video");
     const frameCanvas = document.getElementById("frameCanvas");
     const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
+    const overlay = document.getElementById("overlay");
+    const octx = overlay.getContext("2d");
 
     function dbg(msg) { debugEl.textContent = `debug: ${msg}`; }
+    
+    function drawDot(x, y, r=3) {
+      octx.beginPath();
+      octx.arc(x, y, r, 0, Math.PI * 2);
+      octx.fill();
+    }
 
     // -----------------------------
     // PDF Viewer (PDF.js)
@@ -332,12 +343,22 @@
       const now = performance.now();
 
       if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        dbg("no face");
+        debugEl.textContent = "debug: no face";
         lookRightStartMs = null;
+        if (window.octx && window.overlay) octx.clearRect(0,0,overlay.width,overlay.height);
         return;
       }
 
       const lm = results.multiFaceLandmarks[0];
+      
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+      octx.fillStyle = "lime";
+      const ids = [33,133,159,145,362,263,386,374,468,473];
+      for (const id of ids) {
+        const p = lm[id];
+        drawDot(p.x * overlay.width, p.y * overlay.height, (id === 468 || id === 473) ? 4 : 2.5);
+      }
+      
       const f = computeFeatures(lm);
 
       if (recording) {
@@ -425,6 +446,9 @@ auto=${autoEnabled} cooldown=${inCooldown}`;
         const vh = videoEl.videoHeight || 360;
         frameCanvas.width = vw;
         frameCanvas.height = vh;
+
+        overlay.width = frameCanvas.width;
+        overlay.height = frameCanvas.height;
 
         // Drive FaceMesh via canvas (more reliable than sending video element)
         const loop = async () => {
