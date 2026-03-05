@@ -314,7 +314,7 @@
       return { gaze_x, blink_l, blink_r, face_cx, face_cy };
     }
 
-    const faceMesh = new FaceMesh.FaceMesh({
+    const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
     });
 
