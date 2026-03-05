@@ -48,7 +48,10 @@
 
     <div class="card">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button id="startCamBtn" type="button" onclick="window.__startCamera()">Start Camera</button>
+        <button id="startCamBtn" type="button"
+          onclick="document.getElementById('debug').textContent='debug: BUTTON WORKS'; if(window.__startCamera){ window.__startCamera(); } else { document.getElementById('debug').textContent='debug: __startCamera missing'; }">
+          Start Camera
+        </button>
         <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
       </div>
@@ -438,8 +441,8 @@ auto=${autoEnabled} cooldown=${inCooldown}`;
         loop();
 
       } catch (err) {
-        dbg(`camera error: ${err.name} - ${err.message}`);
-        setAuto(false);
+        document.getElementById("debug").textContent =
+        `debug: camera error: ${err.name} - ${err.message}`;
       }
     }
 
