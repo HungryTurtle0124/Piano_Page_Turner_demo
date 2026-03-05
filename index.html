@@ -45,8 +45,8 @@
 
     <div class="card">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button id="startCamBtn">Start Camera</button>
-        <button id="stopCamBtn" disabled>Stop</button>
+        <button id="startCamBtn" type="button" onclick="window.__startCamera()">Start Camera</button>
+        <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
       </div>
 
@@ -458,11 +458,20 @@ auto=${autoEnabled} cooldown=${inCooldown}`;
       dbg("camera stopped");
     }
 
+    window.__startCamera = startCamera;
+    window.__stopCamera = stopCamera;
+
+    const startBtn = document.getElementById("startCamBtn");
+    const stopBtn = document.getElementById("stopCamBtn");
+
+    startBtn.addEventListener("touchend", (e) => { e.preventDefault(); startCamera(); }, { passive: false });
+    stopBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopCamera(); }, { passive: false });
+
     document.getElementById("startCamBtn").addEventListener("click", startCamera);
     document.getElementById("stopCamBtn").addEventListener("click", stopCamera);
 
     // Startup message
-    dbg("ready");
+    dbg("ready v3");
   </script>
 </body>
 </html>
