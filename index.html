@@ -478,6 +478,12 @@ auto=${autoEnabled} cooldown=${inCooldown}`;
 
     // Startup message
     dbg("ready v3");
+    // --- expose functions for inline onclick (must be after function definitions) ---
+    window.__startCamera = startCamera;
+    window.__stopCamera = stopCamera;
+
+    // sanity proof (you should see this immediately)
+    document.getElementById("debug").textContent = "debug: ready (exposed)";
   </script>
 </body>
 </html>
