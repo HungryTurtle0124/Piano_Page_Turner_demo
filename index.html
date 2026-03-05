@@ -18,13 +18,12 @@
     .badge { display:inline-block; padding: 4px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
   </style>
 
-  <!-- PDF.js -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js"></script>
+  <!-- PDF.js (legacy build: stable global pdfjsLib) -->
+  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
+  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js"></script>
 
-  <!-- MediaPipe FaceMesh + utils -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <!-- MediaPipe FaceMesh -->
+  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 </head>
 
 <body>
@@ -80,20 +79,30 @@
         This saves <b>numbers</b> (features) per frame, not images.
       </div>
 
-      <div id="debug" class="mono" style="margin-top:10px;">debug: -</div>
+      <div id="debug" class="mono" style="margin-top:10px;">debug: ready</div>
     </div>
   </div>
 
+  <!-- Hidden canvas used to feed frames to MediaPipe (more reliable on iOS) -->
+  <canvas id="frameCanvas" style="display:none;"></canvas>
+
   <script>
+    // -----------------------------
+    // Helpers / DOM
+    // -----------------------------
+    const debugEl = document.getElementById("debug");
+    const videoEl = document.getElementById("video");
+    const frameCanvas = document.getElementById("frameCanvas");
+    const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
+
+    function dbg(msg) { debugEl.textContent = `debug: ${msg}`; }
+
     // -----------------------------
     // PDF Viewer (PDF.js)
     // -----------------------------
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
-
     const pdfInput = document.getElementById("pdfInput");
     const pdfCanvas = document.getElementById("pdfCanvas");
-    const ctx = pdfCanvas.getContext("2d");
+    const pdfCtx = pdfCanvas.getContext("2d");
 
     let pdfDoc = null;
     let currentPage = 1;
@@ -102,6 +111,18 @@
 
     const pageNumEl = document.getElementById("pageNum");
     const pageCountEl = document.getElementById("pageCount");
+
+    // Guard worker setup so the whole script never dies
+    try {
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
+      } else {
+        console.warn("pdfjsLib missing (PDF may not work).");
+      }
+    } catch (e) {
+      console.warn("PDF worker setup failed:", e);
+    }
 
     async function renderPage(num) {
       if (!pdfDoc) return;
@@ -113,7 +134,7 @@
       pdfCanvas.width = Math.floor(viewport.width);
       pdfCanvas.height = Math.floor(viewport.height);
 
-      const renderContext = { canvasContext: ctx, viewport };
+      const renderContext = { canvasContext: pdfCtx, viewport };
       await page.render(renderContext).promise;
 
       pageRendering = false;
@@ -133,6 +154,10 @@
     }
 
     async function loadPdfFromFile(file) {
+      if (!window.pdfjsLib) {
+        alert("PDF.js failed to load. Refresh the page.");
+        return;
+      }
       const arrayBuffer = await file.arrayBuffer();
       pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       currentPage = 1;
@@ -163,11 +188,8 @@
     }
 
     // -----------------------------
-    // Face Mesh + Baseline "look-right" trigger
+    // UI: sliders + auto state
     // -----------------------------
-    const videoEl = document.getElementById("video");
-    const debugEl = document.getElementById("debug");
-
     const thr = document.getElementById("thr");
     const hold = document.getElementById("hold");
     const cool = document.getElementById("cool");
@@ -185,11 +207,7 @@
     cool.addEventListener("input", syncSliders);
     syncSliders();
 
-    let camera = null;
     let autoEnabled = false;
-    let lastTurnMs = 0;
-    let lookRightStartMs = null;
-
     const autoState = document.getElementById("autoState");
     function setAuto(on) {
       autoEnabled = on;
@@ -197,7 +215,9 @@
       autoState.style.fontWeight = on ? "700" : "400";
     }
 
-    // Recording numeric data (features)
+    // -----------------------------
+    // Recording numeric data
+    // -----------------------------
     let recording = false;
     let rows = [];
     const recState = document.getElementById("recState");
@@ -223,12 +243,9 @@
       }
     });
 
-    // We'll label NEXT by stamping the most recent ~1s window as "NEXT_WINDOW"
-    // Simpler for v1: add a "label" column per frame, and when you tap NEXT,
-    // we retroactively label last 30 frames as NEXT.
     labelNextBtn.addEventListener("click", () => {
       const now = performance.now();
-      const windowMs = 1000; // 1 second
+      const windowMs = 1000;
       for (let i = rows.length - 1; i >= 0; i--) {
         if (now - rows[i].t_ms > windowMs) break;
         rows[i].label = "NEXT";
@@ -259,44 +276,32 @@
       URL.revokeObjectURL(a.href);
     });
 
-    // Eye landmarks indices (MediaPipe FaceMesh)
-    // Left eye corners: 33 (outer), 133 (inner)
-    // Right eye corners: 362 (outer), 263 (inner)
-    // Iris centers (with refineLandmarks: true):
-    // Left iris approx center: 468, Right iris approx center: 473
-    // Blink proxy using eye aspect ratio points:
-    // Left: upper 159, lower 145. Right: upper 386, lower 374.
+    // -----------------------------
+    // MediaPipe FaceMesh
+    // -----------------------------
     function dist(a, b) {
       const dx = a.x - b.x, dy = a.y - b.y;
       return Math.hypot(dx, dy);
     }
 
     function computeFeatures(lm) {
-      // Face center proxy (using landmark 1 as near nose bridge)
       const face = lm[1];
       const face_cx = face.x;
       const face_cy = face.y;
 
-      // Gaze proxy: compare iris x position within eye corners
       const leftOuter = lm[33], leftInner = lm[133], leftIris = lm[468];
       const rightOuter = lm[362], rightInner = lm[263], rightIris = lm[473];
 
-      // Normalize iris position inside each eye
       const leftEyeWidth = Math.max(1e-6, dist(leftOuter, leftInner));
       const rightEyeWidth = Math.max(1e-6, dist(rightOuter, rightInner));
 
-      // For left eye: outer->inner is increasing toward nose; we want "look right" overall,
-      // so we average both eyes in a consistent direction:
-      // Define gaze_x positive when looking to the user's right (screen right).
-      // For left eye, screen-right corresponds to iris moving toward outer corner (33).
       const leftEyeCenterX = (leftOuter.x + leftInner.x) / 2;
       const rightEyeCenterX = (rightOuter.x + rightInner.x) / 2;
 
-      const leftG = (leftEyeCenterX - leftIris.x) / leftEyeWidth;   // iris toward outer => positive
-      const rightG = (rightIris.x - rightEyeCenterX) / rightEyeWidth; // iris toward outer (362) => negative usually, so flip:
+      const leftG = (leftEyeCenterX - leftIris.x) / leftEyeWidth;
+      const rightG = (rightIris.x - rightEyeCenterX) / rightEyeWidth;
       const gaze_x = (leftG + (-rightG)) / 2;
 
-      // Blink proxy (eye aspect ratio-ish): smaller vertical distance => more closed
       const blink_l = dist(lm[159], lm[145]) / leftEyeWidth;
       const blink_r = dist(lm[386], lm[374]) / rightEyeWidth;
 
@@ -309,16 +314,19 @@
 
     faceMesh.setOptions({
       maxNumFaces: 1,
-      refineLandmarks: true,    // enables iris landmarks
+      refineLandmarks: true,
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
+
+    let lastTurnMs = 0;
+    let lookRightStartMs = null;
 
     faceMesh.onResults((results) => {
       const now = performance.now();
 
       if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        debugEl.textContent = "debug: no face";
+        dbg("no face");
         lookRightStartMs = null;
         return;
       }
@@ -326,23 +334,15 @@
       const lm = results.multiFaceLandmarks[0];
       const f = computeFeatures(lm);
 
-      // Record per-frame numeric data (no images)
       if (recording) {
-        rows.push({
-          t_ms: now,
-          ...f,
-          label: "NONE",
-        });
-        // Keep it bounded (optional)
+        rows.push({ t_ms: now, ...f, label: "NONE" });
         if (rows.length > 20000) rows.splice(0, 2000);
         downloadCsvBtn.disabled = rows.length === 0;
       }
 
-      // Baseline "look-right hold" trigger
       const threshold = parseFloat(thr.value);
       const holdMs = parseInt(hold.value, 10);
       const cooldownMs = parseInt(cool.value, 10);
-
       const inCooldown = (now - lastTurnMs) < cooldownMs;
 
       if (autoEnabled && !inCooldown) {
@@ -362,77 +362,107 @@
       }
 
       debugEl.textContent =
-        `debug:
+`debug:
 gaze_x=${f.gaze_x.toFixed(3)} (thr=${threshold.toFixed(2)})
 blink_l=${f.blink_l.toFixed(3)}  blink_r=${f.blink_r.toFixed(3)}
 face_cx=${f.face_cx.toFixed(3)}  face_cy=${f.face_cy.toFixed(3)}
 auto=${autoEnabled} cooldown=${inCooldown}`;
     });
 
+    // -----------------------------
+    // Camera start/stop (iPad-safe)
+    // -----------------------------
     let rafId = null;
 
     async function startCamera() {
-        try {
-            debugEl.textContent = "camera: requesting permission...";
+      try {
+        dbg("clicked start camera");
 
-            // Make iOS Safari happy
-            videoEl.setAttribute("autoplay", "");
-            videoEl.setAttribute("muted", "");
-            videoEl.setAttribute("playsinline", "");
-            videoEl.muted = true;
-            videoEl.playsInline = true;
-            // Request camera
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: { facingMode: "user"}
-            });
+        // Ensure attributes (iOS Safari)
+        videoEl.setAttribute("autoplay", "");
+        videoEl.setAttribute("muted", "");
+        videoEl.setAttribute("playsinline", "");
+        videoEl.muted = true;
+        videoEl.playsInline = true;
 
-            videoEl.srcObject = stream; 
-            debugEl.textContent = "camera: stream received, waiting for metadata...";
-
-            await new Promise((resolve) => {
-                videoEl.onloadedmetadata = () => resolve();
-            });
-            await videoEl.play();
-            debugEl.textContent = "camera: playing ✅";
-
-            setAuto(true);
-            document.getElementById("startCamBtn").disabled = true;
-            document.getElementById("stopCamBtn").disabled = false;
-
-            // Drive FaceMesh manually (works well on iOS)
-            const loop = async () => {
-                if (!videoEl.srcObject) return;
-                await faceMesh.send({ image: videoEl });
-                rafId = requestAnimationFrame(loop);
-            };
-            loop();
-        } catch (err) {
-            debugEl.textContent = `camera error: ${err.name} - ${err.message}`;
-            setAuto(false);
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          dbg("getUserMedia not supported");
+          return;
         }
+
+        dbg("requesting permission...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: "user",
+            width: { ideal: 480 },
+            height: { ideal: 360 }
+          }
+        });
+
+        videoEl.srcObject = stream;
+
+        // Wait for metadata before play (important on iOS)
+        await new Promise((resolve) => {
+          videoEl.onloadedmetadata = () => resolve();
+        });
+
+        await videoEl.play();
+        dbg("camera playing ✅");
+
+        setAuto(true);
+        document.getElementById("startCamBtn").disabled = true;
+        document.getElementById("stopCamBtn").disabled = false;
+
+        // Prepare hidden canvas
+        const vw = videoEl.videoWidth || 480;
+        const vh = videoEl.videoHeight || 360;
+        frameCanvas.width = vw;
+        frameCanvas.height = vh;
+
+        // Drive FaceMesh via canvas (more reliable than sending video element)
+        const loop = async () => {
+          if (!videoEl.srcObject) return;
+
+          // Draw the current frame into canvas
+          frameCtx.drawImage(videoEl, 0, 0, frameCanvas.width, frameCanvas.height);
+
+          // Send canvas image to FaceMesh
+          await faceMesh.send({ image: frameCanvas });
+
+          rafId = requestAnimationFrame(loop);
+        };
+        loop();
+
+      } catch (err) {
+        dbg(`camera error: ${err.name} - ${err.message}`);
+        setAuto(false);
+      }
     }
 
     async function stopCamera() {
-    setAuto(false);
+      setAuto(false);
 
-    if (rafId) {
+      if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = null;
-    }
+      }
 
-    const stream = videoEl.srcObject;
-    if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
-        videoEl.srcObject = null;
+      const stream = videoEl.srcObject;
+      if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
+      videoEl.srcObject = null;
 
-        document.getElementById("startCamBtn").disabled = false;
-        document.getElementById("stopCamBtn").disabled = true;
+      document.getElementById("startCamBtn").disabled = false;
+      document.getElementById("stopCamBtn").disabled = true;
+
+      dbg("camera stopped");
     }
 
     document.getElementById("startCamBtn").addEventListener("click", startCamera);
     document.getElementById("stopCamBtn").addEventListener("click", stopCamera);
 
-    // Optional: load a sample PDF via URL later if you want.
+    // Startup message
+    dbg("ready");
   </script>
 </body>
 </html>
