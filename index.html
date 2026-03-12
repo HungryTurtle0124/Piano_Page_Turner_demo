@@ -49,10 +49,7 @@
 
     <div class="card">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button id="startCamBtn" type="button"
-          onclick="document.getElementById('debug').textContent='debug: BUTTON WORKS'; if(window.__startCamera){ window.__startCamera(); } else { document.getElementById('debug').textContent='debug: __startCamera missing'; }">
-          Start Camera
-        </button>
+        <button id="startCamBtn" type="button" onclick="window.__startCamera()">Start Camera</button>
         <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
         <button id="calibBtn" type="button">Calibrate (look center)</button>
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
@@ -127,7 +124,7 @@
         return;
       }
       neutralFaceX = lastFeatures.face_cx;
-      neutralTurn = lastFeatures.turnIntent ?? 0.0;
+      neutralTurn = lastFeatures.gaze_x;
       hasNeutral = true;
       debugEl.textContent = "debug: calibrated ✅";
     });
@@ -246,6 +243,7 @@
     let lastFeatures = null;
     let neutralFaceX = 0.5;
     let neutralTurn = 0.0;
+    let neutralGazeX = 0.0;
     let hasNeutral = false;
 
     const autoState = document.getElementById("autoState");
@@ -385,11 +383,11 @@
       const f = computeFeatures(lm);
 
       // Combine eye + head movement into one "turn intent"
-      const head = f.face_cx - (hasNeutral ? neutralFaceX : 0.5); // head shift in frame
-      const eye = f.gaze_x;                                      // your eye proxy
+      const head = f.face_cx - (hasNeutral ? neutralFaceX : 0.5); // head deviation from neutral
+      const eye = f.gaze_x  - (hasNeutral ? neutralGazeX  : 0.0); // eye deviation from neutral
 
       const W_EYE = 1.0;
-      const W_HEAD = 2.0; // increase if you want head movement to matter more
+      const W_HEAD = 2.0;
 
       f.turnIntent = (W_EYE * eye) + (W_HEAD * head);
 
