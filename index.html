@@ -54,6 +54,7 @@
           Start Camera
         </button>
         <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
+        <button id="calibBtn" type="button">Calibrate (look center)</button>
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
       </div>
 
@@ -71,7 +72,7 @@
       <div style="margin-top: 10px;">
         <div class="small"><b>Baseline trigger:</b> “Look RIGHT and hold”</div>
         <div class="small">Threshold: <span id="thrVal">0.22</span></div>
-        <input id="thr" type="range" min="0.05" max="0.50" step="0.01" value="0.22" />
+        <input id="thr" type="range" min="0.05" max="0.50" step="0.01" value="0.10" />
 
         <div class="small" style="margin-top:10px;">Hold time (ms): <span id="holdVal">650</span></div>
         <input id="hold" type="range" min="200" max="1200" step="10" value="650" />
@@ -119,6 +120,17 @@
       octx.arc(x, y, r, 0, Math.PI * 2);
       octx.fill();
     }
+
+    document.getElementById("calibBtn").addEventListener("click", () => {
+      if (!lastFeatures) {
+        debugEl.textContent = "debug: calibrate failed (no face yet)";
+        return;
+      }
+      neutralFaceX = lastFeatures.face_cx;
+      neutralTurn = lastFeatures.turnIntent ?? 0.0;
+      hasNeutral = true;
+      debugEl.textContent = "debug: calibrated ✅";
+    });
 
     // -----------------------------
     // PDF Viewer (PDF.js)
@@ -231,6 +243,11 @@
     syncSliders();
 
     let autoEnabled = false;
+    let lastFeatures = null;
+    let neutralFaceX = 0.5;
+    let neutralTurn = 0.0;
+    let hasNeutral = false;
+
     const autoState = document.getElementById("autoState");
     function setAuto(on) {
       autoEnabled = on;
@@ -366,10 +383,23 @@
       }
       
       const f = computeFeatures(lm);
+
+      // Combine eye + head movement into one "turn intent"
+      const head = f.face_cx - (hasNeutral ? neutralFaceX : 0.5); // head shift in frame
+      const eye = f.gaze_x;                                      // your eye proxy
+
+      const W_EYE = 1.0;
+      const W_HEAD = 2.0; // increase if you want head movement to matter more
+
+      f.turnIntent = (W_EYE * eye) + (W_HEAD * head);
+
+      // Save last features for calibration
+      lastFeatures = f;
       
-      // Update gaze meter bar (visual)
-      const gx = Math.max(-0.5, Math.min(0.5, f.gaze_x)); // clamp
-      const pct = ((gx + 0.5) / 1.0) * 100;              // map to 0..100
+      // Update meter using combined turn intent (eye + head)
+      const RANGE = 0.15; // smaller = more sensitive
+      const x = Math.max(-RANGE, Math.min(RANGE, f.turnIntent));
+      const pct = ((x + RANGE) / (2 * RANGE)) * 100;
       if (gazeBar) gazeBar.style.width = `${pct}%`;
 
       if (recording) {
@@ -384,7 +414,7 @@
       const inCooldown = (now - lastTurnMs) < cooldownMs;
 
       if (autoEnabled && !inCooldown) {
-        if (f.gaze_x > threshold) {
+        if (f.turnIntent  > threshold) {
           if (lookRightStartMs === null) lookRightStartMs = now;
           const held = now - lookRightStartMs;
           if (held >= holdMs) {
