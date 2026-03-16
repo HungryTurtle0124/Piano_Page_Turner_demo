@@ -4,20 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Eye Page Turner (Web Demo)</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; padding: 12px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
-    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #bbb; background: #f7f7f7; cursor: pointer; }
-    button:active { transform: scale(0.99); }
-    input[type="range"] { width: 220px; }
-    #pdfCanvas { max-width: 100%; width: 820px; background: #fff; }
-    #video { width: 240px; border-radius: 12px; background: #111; transform: scaleX(-1); }
-    #overlay { transform: scaleX(-1); }
-    .small { font-size: 12px; color: #444; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
-    .badge { display:inline-block; padding: 4px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
-  </style>
+
+  <link rel="stylesheet" href="./css/styles.css" />
 
   <!-- PDF.js (legacy build: stable global pdfjsLib) -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
@@ -28,558 +16,80 @@
 </head>
 
 <body>
-  <div style="padding:8px 10px; background:#ffef9a; border-radius:10px; display:inline-block;">
-  BUILD v3
-  </div>
+  <div class="build-badge">BUILD v4</div>
+
   <h2>Eye Page Turner — Web Demo (iPad Air 5)</h2>
   <div class="small">
     Tip: On iPad, open this page over <b>HTTPS</b> (GitHub Pages) or camera won’t start.
   </div>
 
-  <div class="row" style="margin-top: 12px;">
+  <div class="row top-margin">
+    <!-- PDF card -->
     <div class="card">
-      <div style="display:flex; gap:8px; flex-wrap: wrap;">
+      <div class="toolbar">
         <input id="pdfInput" type="file" accept="application/pdf" />
-        <button id="prevBtn">◀ Prev</button>
-        <button id="nextBtn">Next ▶</button>
+        <button id="prevBtn" type="button">◀ Prev</button>
+        <button id="nextBtn" type="button">Next ▶</button>
         <span class="badge">Page: <span id="pageNum">-</span>/<span id="pageCount">-</span></span>
       </div>
       <canvas id="pdfCanvas"></canvas>
     </div>
 
+    <!-- Camera card -->
     <div class="card">
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button id="startCamBtn" type="button" onclick="window.__startCamera()">Start Camera</button>
-        <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
-        <button id="calibBtn" type="button">Calibrate (look center)</button>
-        <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
+      <div class="toolbar">
+        <button id="startCamBtn" type="button">Start Camera</button>
+        <button id="stopCamBtn" type="button" disabled>Stop</button>
+        <button id="calibBtn" type="button" disabled>Calibrate (look center)</button>
+
         <span class="badge">Calibrated: <span id="calState">NO</span></span>
+        <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
       </div>
 
-      <div style="margin-top: 10px; position: relative; width: 240px;">
+      <div class="video-wrap">
         <video id="video" autoplay muted playsinline></video>
-        <canvas id="overlay"
-                style="position:absolute; left:0; top:0; width:240px; height:auto; pointer-events:none;"></canvas>                
+        <canvas id="overlay"></canvas>
       </div>
 
-      <div class="small" style="margin-top:8px;">Gaze meter</div>
-      <div style="width:240px; height:10px; background:#eee; border-radius:999px; overflow:hidden;">
-        <div id="gazeBar" style="height:10px; width:50%; background:#888;"></div>
-      </div>
+      <div class="small meter-title">Horizontal (left/right)</div>
+      <div class="meter"><div id="gazeBarX" class="meter-bar"></div></div>
 
-      <div class="small" style="margin-top:10px;">Vertical meter (up/down)</div>
-      <div style="width:240px; height:10px; background:#eee; border-radius:999px; overflow:hidden;">
-        <div id="gazeBarY" style="height:10px; width:50%; background:#888;"></div>
-      </div>
+      <div class="small meter-title">Vertical (up/down)</div>
+      <div class="meter"><div id="gazeBarY" class="meter-bar"></div></div>
 
-      <div style="margin-top: 10px;">
-        <div class="small"><b>Baseline trigger:</b> “Look RIGHT and hold”</div>
-        <div class="small">Threshold: <span id="thrVal">0.22</span></div>
-        <input id="thr" type="range" min="0.05" max="0.50" step="0.01" value="0.10" />
+      <div class="top-margin">
+        <div class="small"><b>Trigger:</b> hold “RIGHT intent”</div>
 
-        <div class="small" style="margin-top:10px;">Hold time (ms): <span id="holdVal">650</span></div>
+        <div class="small">Threshold: <span id="thrVal">0.10</span></div>
+        <input id="thr" type="range" min="0.02" max="0.50" step="0.01" value="0.10" />
+
+        <div class="small top-margin-sm">Hold time (ms): <span id="holdVal">650</span></div>
         <input id="hold" type="range" min="200" max="1200" step="10" value="650" />
 
-        <div class="small" style="margin-top:10px;">Cooldown (ms): <span id="coolVal">2000</span></div>
+        <div class="small top-margin-sm">Cooldown (ms): <span id="coolVal">2000</span></div>
         <input id="cool" type="range" min="500" max="5000" step="50" value="2000" />
       </div>
 
-      <hr style="margin: 14px 0; border: none; border-top: 1px solid #eee;" />
+      <hr class="divider" />
 
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <div class="toolbar">
         <span class="badge">Recording: <span id="recState">OFF</span></span>
-        <button id="toggleRecBtn">Start Recording</button>
-        <button id="labelNextBtn" disabled>Label NEXT (tap)</button>
-        <button id="downloadCsvBtn" disabled>Download CSV</button>
+        <button id="toggleRecBtn" type="button" disabled>Start Recording</button>
+        <button id="labelNextBtn" type="button" disabled>Label NEXT (tap)</button>
+        <button id="downloadCsvBtn" type="button" disabled>Download CSV</button>
       </div>
 
-      <div class="small" style="margin-top:10px;">
-        This saves <b>numbers</b> (features) per frame, not images.
+      <div class="small top-margin-sm">
+        Saves <b>numbers</b> (features) per frame — not images.
       </div>
 
-      <div id="debug" class="mono" style="margin-top:10px;">debug: ready</div>
+      <div id="debug" class="mono top-margin-sm">debug: ready</div>
     </div>
   </div>
 
-  <!-- Hidden canvas used to feed frames to MediaPipe (more reliable on iOS) -->
+  <!-- Hidden canvas for feeding frames to MediaPipe (iOS reliable) -->
   <canvas id="frameCanvas" style="display:none;"></canvas>
 
-  <script>
-    // -----------------------------
-    // Helpers / DOM
-    // -----------------------------
-    const debugEl = document.getElementById("debug");
-    const videoEl = document.getElementById("video");
-    const gazeBar = document.getElementById("gazeBar");
-    const gazeBarY = document.getElementById("gazeBarY");
-    const frameCanvas = document.getElementById("frameCanvas");
-    const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
-    const overlay = document.getElementById("overlay");
-    const octx = overlay.getContext("2d");
-
-    function dbg(msg) { debugEl.textContent = `debug: ${msg}`; }
-    
-    function drawDot(x, y, r=3) {
-      octx.beginPath();
-      octx.arc(x, y, r, 0, Math.PI * 2);
-      octx.fill();
-    }
-
-    document.getElementById("calibBtn").addEventListener("click", () => {
-      if (!lastFeatures) {
-        debugEl.textContent = "debug: calibrate failed (no face yet)";
-        return;
-      }
-      neutralFaceX = lastFeatures.face_cx;
-      neutralTurn = lastFeatures.gaze_x;
-      neutralFaceY = lastFeatures.face_cy;
-      neutralGazeY = lastFeatures.gaze_y;
-      hasNeutral = true;
-      setCalState();
-      debugEl.textContent = "debug: calibrated ✅";
-    });
-
-    // -----------------------------
-    // PDF Viewer (PDF.js)
-    // -----------------------------
-    const pdfInput = document.getElementById("pdfInput");
-    const pdfCanvas = document.getElementById("pdfCanvas");
-    const pdfCtx = pdfCanvas.getContext("2d");
-
-    let pdfDoc = null;
-    let currentPage = 1;
-    let pageRendering = false;
-    let pendingPage = null;
-
-    const pageNumEl = document.getElementById("pageNum");
-    const pageCountEl = document.getElementById("pageCount");
-
-    // Guard worker setup so the whole script never dies
-    try {
-      if (window.pdfjsLib) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
-      } else {
-        console.warn("pdfjsLib missing (PDF may not work).");
-      }
-    } catch (e) {
-      console.warn("PDF worker setup failed:", e);
-    }
-
-    async function renderPage(num) {
-      if (!pdfDoc) return;
-      pageRendering = true;
-
-      const page = await pdfDoc.getPage(num);
-      const viewport = page.getViewport({ scale: 1.3 });
-
-      pdfCanvas.width = Math.floor(viewport.width);
-      pdfCanvas.height = Math.floor(viewport.height);
-
-      const renderContext = { canvasContext: pdfCtx, viewport };
-      await page.render(renderContext).promise;
-
-      pageRendering = false;
-      pageNumEl.textContent = String(currentPage);
-      pageCountEl.textContent = String(pdfDoc.numPages);
-
-      if (pendingPage !== null) {
-        const n = pendingPage;
-        pendingPage = null;
-        renderPage(n);
-      }
-    }
-
-    function queueRender(num) {
-      if (pageRendering) pendingPage = num;
-      else renderPage(num);
-    }
-
-    async function loadPdfFromFile(file) {
-      if (!window.pdfjsLib) {
-        alert("PDF.js failed to load. Refresh the page.");
-        return;
-      }
-      const arrayBuffer = await file.arrayBuffer();
-      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      currentPage = 1;
-      queueRender(currentPage);
-    }
-
-    pdfInput.addEventListener("change", (e) => {
-      const file = e.target.files?.[0];
-      if (file) loadPdfFromFile(file);
-    });
-
-    document.getElementById("prevBtn").addEventListener("click", () => {
-      if (!pdfDoc) return;
-      if (currentPage <= 1) return;
-      currentPage--;
-      queueRender(currentPage);
-    });
-
-    document.getElementById("nextBtn").addEventListener("click", () => {
-      turnNextPage();
-    });
-
-    function turnNextPage() {
-      if (!pdfDoc) return;
-      if (currentPage >= pdfDoc.numPages) return;
-      currentPage++;
-      queueRender(currentPage);
-    }
-
-    // -----------------------------
-    // UI: sliders + auto state
-    // -----------------------------
-    const thr = document.getElementById("thr");
-    const hold = document.getElementById("hold");
-    const cool = document.getElementById("cool");
-    const thrVal = document.getElementById("thrVal");
-    const holdVal = document.getElementById("holdVal");
-    const coolVal = document.getElementById("coolVal");
-
-    function syncSliders() {
-      thrVal.textContent = thr.value;
-      holdVal.textContent = hold.value;
-      coolVal.textContent = cool.value;
-    }
-    thr.addEventListener("input", syncSliders);
-    hold.addEventListener("input", syncSliders);
-    cool.addEventListener("input", syncSliders);
-    syncSliders();
-
-    let autoEnabled = false;
-    let lastFeatures = null;
-    let neutralFaceX = 0.5;
-    let neutralTurn = 0.0;
-    let neutralGazeX = 0.0;
-    let neutralFaceY = 0.5;
-    let neutralGazeY = 0.0; // we'll approximate from landmarks in a moment
-    let hasNeutral = false;
-
-    const autoState = document.getElementById("autoState");
-    function setAuto(on) {
-      autoEnabled = on;
-      autoState.textContent = on ? "ON" : "OFF";
-      autoState.style.fontWeight = on ? "700" : "400";
-    }
-
-    const calState = document.getElementById("calState");
-    function setCalState() {
-      calState.textContent = hasNeutral ? "YES" : "NO";
-      calState.style.fontWeight = hasNeutral ? "700" : "400";
-    }
-    setCalState();
-
-    // -----------------------------
-    // Recording numeric data
-    // -----------------------------
-    let recording = false;
-    let rows = [];
-    const recState = document.getElementById("recState");
-    const toggleRecBtn = document.getElementById("toggleRecBtn");
-    const labelNextBtn = document.getElementById("labelNextBtn");
-    const downloadCsvBtn = document.getElementById("downloadCsvBtn");
-
-    function setRecording(on) {
-      recording = on;
-      recState.textContent = on ? "ON" : "OFF";
-      toggleRecBtn.textContent = on ? "Stop Recording" : "Start Recording";
-      labelNextBtn.disabled = !on;
-      downloadCsvBtn.disabled = rows.length === 0;
-    }
-
-    toggleRecBtn.addEventListener("click", () => {
-      if (!recording) {
-        rows = [];
-        setRecording(true);
-      } else {
-        setRecording(false);
-        downloadCsvBtn.disabled = rows.length === 0;
-      }
-    });
-
-    labelNextBtn.addEventListener("click", () => {
-      const now = performance.now();
-      const windowMs = 1000;
-      for (let i = rows.length - 1; i >= 0; i--) {
-        if (now - rows[i].t_ms > windowMs) break;
-        rows[i].label = "NEXT";
-      }
-      downloadCsvBtn.disabled = rows.length === 0;
-    });
-
-    downloadCsvBtn.addEventListener("click", () => {
-      if (rows.length === 0) return;
-      const header = ["t_ms","gaze_x","blink_l","blink_r","face_cx","face_cy","label"];
-      const lines = [header.join(",")];
-      for (const r of rows) {
-        lines.push([
-          r.t_ms.toFixed(1),
-          r.gaze_x.toFixed(4),
-          r.blink_l.toFixed(4),
-          r.blink_r.toFixed(4),
-          r.face_cx.toFixed(4),
-          r.face_cy.toFixed(4),
-          r.label
-        ].join(","));
-      }
-      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "eye_page_turner_features.csv";
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
-
-    // -----------------------------
-    // MediaPipe FaceMesh
-    // -----------------------------
-    function dist(a, b) {
-      const dx = a.x - b.x, dy = a.y - b.y;
-      return Math.hypot(dx, dy);
-    }
-
-    function computeFeatures(lm) {
-      const face = lm[1];
-      const face_cx = face.x;
-      const face_cy = face.y;
-
-      const leftOuter = lm[33], leftInner = lm[133], leftIris = lm[468];
-      const rightOuter = lm[362], rightInner = lm[263], rightIris = lm[473];
-
-      const leftEyeWidth = Math.max(1e-6, dist(leftOuter, leftInner));
-      const rightEyeWidth = Math.max(1e-6, dist(rightOuter, rightInner));
-
-      const leftEyeCenterX = (leftOuter.x + leftInner.x) / 2;
-      const rightEyeCenterX = (rightOuter.x + rightInner.x) / 2;
-      
-      const leftEyeCenterY = (leftOuter.y + leftInner.y) / 2;
-      const rightEyeCenterY = (rightOuter.y + rightInner.y) / 2;
-
-      const leftGy = (leftEyeCenterY - leftIris.y) / leftEyeWidth;   // up => positive
-      const rightGy = (rightIris.y - rightEyeCenterY) / rightEyeWidth;
-      const gaze_y = (leftGy + (-rightGy)) / 2;
-
-      const leftG = (leftEyeCenterX - leftIris.x) / leftEyeWidth;
-      const rightG = (rightIris.x - rightEyeCenterX) / rightEyeWidth;
-      const gaze_x = (leftG + (-rightG)) / 2;
-
-      const blink_l = dist(lm[159], lm[145]) / leftEyeWidth;
-      const blink_r = dist(lm[386], lm[374]) / rightEyeWidth;
-
-      return { gaze_x, gaze_y, blink_l, blink_r, face_cx, face_cy };
-    }
-
-    const faceMesh = new FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-    });
-
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
-    let lastTurnMs = 0;
-    let lookRightStartMs = null;
-
-    faceMesh.onResults((results) => {
-      const now = performance.now();
-
-      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        debugEl.textContent = "debug: no face";
-        lookRightStartMs = null;
-        if (window.octx && window.overlay) octx.clearRect(0,0,overlay.width,overlay.height);
-        return;
-      }
-
-      const lm = results.multiFaceLandmarks[0];
-      
-      octx.clearRect(0, 0, overlay.width, overlay.height);
-      octx.fillStyle = "lime";
-      const ids = [33,133,159,145,362,263,386,374,468,473];
-      for (const id of ids) {
-        const p = lm[id];
-        drawDot(p.x * overlay.width, p.y * overlay.height, (id === 468 || id === 473) ? 4 : 2.5);
-      }
-      
-      const f = computeFeatures(lm);
-
-      // Combine eye + head movement into one "turn intent"
-      const head = f.face_cx - (hasNeutral ? neutralFaceX : 0.5); // head deviation from neutral
-      const eye = f.gaze_x  - (hasNeutral ? neutralGazeX  : 0.0); // eye deviation from neutral
-
-      const W_EYE = 1.0;
-      const W_HEAD = 2.0;
-
-      f.turnIntent = (W_EYE * eye) + (W_HEAD * head);
-      f.turnIntent = - f.turnIntent;
-
-      // Save last features for calibration
-      lastFeatures = f;
-      
-      // Update meter using combined turn intent (eye + head)
-      const RANGE = 0.15; // smaller = more sensitive
-      const x = Math.max(-RANGE, Math.min(RANGE, f.turnIntent));
-      const pct = ((x + RANGE) / (2 * RANGE)) * 100;
-      if (gazeBar) gazeBar.style.width = `${pct}%`;
-
-      if (recording) {
-        rows.push({ t_ms: now, ...f, label: "NONE" });
-        if (rows.length > 20000) rows.splice(0, 2000);
-        downloadCsvBtn.disabled = rows.length === 0;
-      }
-
-      const vy = (f.gaze_y - (hasNeutral ? neutralGazeY : 0.0)) + 2.0*(f.face_cy - (hasNeutral ? neutralFaceY : 0.5));
-      const RANGEY = 0.08;
-      const yy = Math.max(-RANGEY, Math.min(RANGEY, -vy)); // flip if direction feels reversed
-      const pctY = ((yy + RANGEY) / (2 * RANGEY)) * 100;
-      if (gazeBarY) gazeBarY.style.width = `${pctY}%`;
-
-      const threshold = parseFloat(thr.value);
-      const holdMs = parseInt(hold.value, 10);
-      const cooldownMs = parseInt(cool.value, 10);
-      const inCooldown = (now - lastTurnMs) < cooldownMs;
-
-      if (autoEnabled && !inCooldown) {
-        if (f.turnIntent  > threshold) {
-          if (lookRightStartMs === null) lookRightStartMs = now;
-          const held = now - lookRightStartMs;
-          if (held >= holdMs) {
-            turnNextPage();
-            lastTurnMs = now;
-            lookRightStartMs = null;
-          }
-        } else {
-          lookRightStartMs = null;
-        }
-      } else {
-        lookRightStartMs = null;
-      }
-
-      debugEl.textContent =
-        `debug:
-        gaze_x=${f.gaze_x.toFixed(3)} (thr=${threshold.toFixed(2)})
-        blink_l=${f.blink_l.toFixed(3)}  blink_r=${f.blink_r.toFixed(3)}
-        face_cx=${f.face_cx.toFixed(3)}  face_cy=${f.face_cy.toFixed(3)}
-        auto=${autoEnabled} cooldown=${inCooldown}`;
-    });
-
-    // -----------------------------
-    // Camera start/stop (iPad-safe)
-    // -----------------------------
-    let rafId = null;
-
-    async function startCamera() {
-      try {
-        dbg("clicked start camera");
-
-        // Ensure attributes (iOS Safari)
-        videoEl.setAttribute("autoplay", "");
-        videoEl.setAttribute("muted", "");
-        videoEl.setAttribute("playsinline", "");
-        videoEl.muted = true;
-        videoEl.playsInline = true;
-
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          dbg("getUserMedia not supported");
-          return;
-        }
-
-        dbg("requesting permission...");
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: "user",
-            width: { ideal: 480 },
-            height: { ideal: 360 }
-          }
-        });
-
-        videoEl.srcObject = stream;
-
-        // Wait for metadata before play (important on iOS)
-        await new Promise((resolve) => {
-          videoEl.onloadedmetadata = () => resolve();
-        });
-
-        await videoEl.play();
-        dbg("camera playing ✅");
-
-        setAuto(true);
-        document.getElementById("startCamBtn").disabled = true;
-        document.getElementById("stopCamBtn").disabled = false;
-
-        // Prepare hidden canvas
-        const vw = videoEl.videoWidth || 480;
-        const vh = videoEl.videoHeight || 360;
-        frameCanvas.width = vw;
-        frameCanvas.height = vh;
-
-        overlay.width = frameCanvas.width;
-        overlay.height = frameCanvas.height;
-
-        // Drive FaceMesh via canvas (more reliable than sending video element)
-        const loop = async () => {
-          if (!videoEl.srcObject) return;
-
-          // Draw the current frame into canvas
-          frameCtx.drawImage(videoEl, 0, 0, frameCanvas.width, frameCanvas.height);
-
-          // Send canvas image to FaceMesh
-          await faceMesh.send({ image: frameCanvas });
-
-          rafId = requestAnimationFrame(loop);
-        };
-        loop();
-
-      } catch (err) {
-        document.getElementById("debug").textContent =
-        `debug: camera error: ${err.name} - ${err.message}`;
-      }
-    }
-
-    async function stopCamera() {
-      setAuto(false);
-
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-
-      const stream = videoEl.srcObject;
-      if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
-      videoEl.srcObject = null;
-
-      document.getElementById("startCamBtn").disabled = false;
-      document.getElementById("stopCamBtn").disabled = true;
-
-      dbg("camera stopped");
-    }
-
-    window.__startCamera = startCamera;
-    window.__stopCamera = stopCamera;
-
-    const startBtn = document.getElementById("startCamBtn");
-    const stopBtn = document.getElementById("stopCamBtn");
-
-    startBtn.addEventListener("touchend", (e) => { e.preventDefault(); startCamera(); }, { passive: false });
-    stopBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopCamera(); }, { passive: false });
-
-    document.getElementById("startCamBtn").addEventListener("click", startCamera);
-    document.getElementById("stopCamBtn").addEventListener("click", stopCamera);
-
-    // Startup message
-    dbg("ready v3");
-    // --- expose functions for inline onclick (must be after function definitions) ---
-    window.__startCamera = startCamera;
-    window.__stopCamera = stopCamera;
-
-    // sanity proof (you should see this immediately)
-    document.getElementById("debug").textContent = "debug: ready (exposed)";
-  </script>
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>

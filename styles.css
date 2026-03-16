@@ -1,0 +1,62 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; padding: 12px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+button { padding: 10px 12px; border-radius: 10px; border: 1px solid #bbb; background: #f7f7f7; cursor: pointer; }
+button:active { transform: scale(0.99); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+input[type="range"] { width: 220px; }
+
+#pdfCanvas { max-width: 100%; width: 820px; background: #fff; }
+
+.small { font-size: 12px; color: #444; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
+
+.badge { display:inline-block; padding: 4px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+
+.toolbar { display:flex; gap:8px; flex-wrap: wrap; align-items:center; }
+
+.divider { margin: 14px 0; border: none; border-top: 1px solid #eee; }
+
+.top-margin { margin-top: 12px; }
+.top-margin-sm { margin-top: 8px; }
+
+.build-badge {
+  padding: 8px 10px;
+  background: #ffef9a;
+  border-radius: 10px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.video-wrap {
+  margin-top: 10px;
+  position: relative;
+  width: 240px;
+  height: 180px; /* stable overlay sizing */
+}
+
+#video, #overlay {
+  position: absolute;
+  left: 0; top: 0;
+  width: 240px;
+  height: 180px;
+  border-radius: 12px;
+}
+
+#video { background: #111; transform: scaleX(-1); }
+#overlay { pointer-events: none; transform: scaleX(-1); }
+
+.meter-title { margin-top: 8px; }
+.meter {
+  width: 240px;
+  height: 10px;
+  background: #eee;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.meter-bar {
+  height: 10px;
+  width: 50%;
+  background: #888;
+}
