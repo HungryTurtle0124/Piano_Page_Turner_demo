@@ -53,6 +53,7 @@
         <button id="stopCamBtn" type="button" onclick="window.__stopCamera()" disabled>Stop</button>
         <button id="calibBtn" type="button">Calibrate (look center)</button>
         <span class="badge">Auto turn: <span id="autoState">OFF</span></span>
+        <span class="badge">Calibrated: <span id="calState">NO</span></span>
       </div>
 
       <div style="margin-top: 10px; position: relative; width: 240px;">
@@ -64,6 +65,11 @@
       <div class="small" style="margin-top:8px;">Gaze meter</div>
       <div style="width:240px; height:10px; background:#eee; border-radius:999px; overflow:hidden;">
         <div id="gazeBar" style="height:10px; width:50%; background:#888;"></div>
+      </div>
+
+      <div class="small" style="margin-top:10px;">Vertical meter (up/down)</div>
+      <div style="width:240px; height:10px; background:#eee; border-radius:999px; overflow:hidden;">
+        <div id="gazeBarY" style="height:10px; width:50%; background:#888;"></div>
       </div>
 
       <div style="margin-top: 10px;">
@@ -105,6 +111,7 @@
     const debugEl = document.getElementById("debug");
     const videoEl = document.getElementById("video");
     const gazeBar = document.getElementById("gazeBar");
+    const gazeBarY = document.getElementById("gazeBarY");
     const frameCanvas = document.getElementById("frameCanvas");
     const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
     const overlay = document.getElementById("overlay");
@@ -125,7 +132,10 @@
       }
       neutralFaceX = lastFeatures.face_cx;
       neutralTurn = lastFeatures.gaze_x;
+      neutralFaceY = lastFeatures.face_cy;
+      neutralGazeY = lastFeatures.gaze_y;
       hasNeutral = true;
+      setCalState();
       debugEl.textContent = "debug: calibrated ✅";
     });
 
@@ -244,6 +254,8 @@
     let neutralFaceX = 0.5;
     let neutralTurn = 0.0;
     let neutralGazeX = 0.0;
+    let neutralFaceY = 0.5;
+    let neutralGazeY = 0.0; // we'll approximate from landmarks in a moment
     let hasNeutral = false;
 
     const autoState = document.getElementById("autoState");
@@ -252,6 +264,13 @@
       autoState.textContent = on ? "ON" : "OFF";
       autoState.style.fontWeight = on ? "700" : "400";
     }
+
+    const calState = document.getElementById("calState");
+    function setCalState() {
+      calState.textContent = hasNeutral ? "YES" : "NO";
+      calState.style.fontWeight = hasNeutral ? "700" : "400";
+    }
+    setCalState();
 
     // -----------------------------
     // Recording numeric data
@@ -335,6 +354,13 @@
 
       const leftEyeCenterX = (leftOuter.x + leftInner.x) / 2;
       const rightEyeCenterX = (rightOuter.x + rightInner.x) / 2;
+      
+      const leftEyeCenterY = (leftOuter.y + leftInner.y) / 2;
+      const rightEyeCenterY = (rightOuter.y + rightInner.y) / 2;
+
+      const leftGy = (leftEyeCenterY - leftIris.y) / leftEyeWidth;   // up => positive
+      const rightGy = (rightIris.y - rightEyeCenterY) / rightEyeWidth;
+      const gaze_y = (leftGy + (-rightGy)) / 2;
 
       const leftG = (leftEyeCenterX - leftIris.x) / leftEyeWidth;
       const rightG = (rightIris.x - rightEyeCenterX) / rightEyeWidth;
@@ -343,7 +369,7 @@
       const blink_l = dist(lm[159], lm[145]) / leftEyeWidth;
       const blink_r = dist(lm[386], lm[374]) / rightEyeWidth;
 
-      return { gaze_x, blink_l, blink_r, face_cx, face_cy };
+      return { gaze_x, gaze_y, blink_l, blink_r, face_cx, face_cy };
     }
 
     const faceMesh = new FaceMesh({
@@ -390,6 +416,7 @@
       const W_HEAD = 2.0;
 
       f.turnIntent = (W_EYE * eye) + (W_HEAD * head);
+      f.turnIntent = - f.turnIntent;
 
       // Save last features for calibration
       lastFeatures = f;
@@ -405,6 +432,12 @@
         if (rows.length > 20000) rows.splice(0, 2000);
         downloadCsvBtn.disabled = rows.length === 0;
       }
+
+      const vy = (f.gaze_y - (hasNeutral ? neutralGazeY : 0.0)) + 2.0*(f.face_cy - (hasNeutral ? neutralFaceY : 0.5));
+      const RANGEY = 0.08;
+      const yy = Math.max(-RANGEY, Math.min(RANGEY, -vy)); // flip if direction feels reversed
+      const pctY = ((yy + RANGEY) / (2 * RANGEY)) * 100;
+      if (gazeBarY) gazeBarY.style.width = `${pctY}%`;
 
       const threshold = parseFloat(thr.value);
       const holdMs = parseInt(hold.value, 10);
@@ -428,11 +461,11 @@
       }
 
       debugEl.textContent =
-`debug:
-gaze_x=${f.gaze_x.toFixed(3)} (thr=${threshold.toFixed(2)})
-blink_l=${f.blink_l.toFixed(3)}  blink_r=${f.blink_r.toFixed(3)}
-face_cx=${f.face_cx.toFixed(3)}  face_cy=${f.face_cy.toFixed(3)}
-auto=${autoEnabled} cooldown=${inCooldown}`;
+        `debug:
+        gaze_x=${f.gaze_x.toFixed(3)} (thr=${threshold.toFixed(2)})
+        blink_l=${f.blink_l.toFixed(3)}  blink_r=${f.blink_r.toFixed(3)}
+        face_cx=${f.face_cx.toFixed(3)}  face_cy=${f.face_cy.toFixed(3)}
+        auto=${autoEnabled} cooldown=${inCooldown}`;
     });
 
     // -----------------------------
