@@ -90,6 +90,21 @@
   <!-- Hidden canvas for feeding frames to MediaPipe (iOS reliable) -->
   <canvas id="frameCanvas" style="display:none;"></canvas>
 
+  <script>
+    (async () => {
+      const d = document.getElementById("debug");
+      try {
+        const r = await fetch("./js/main.js", { cache: "no-store" });
+        if (!r.ok) {
+          d.textContent = `debug: main.js fetch failed (${r.status})`;
+          return;
+        }
+        d.textContent = "debug: main.js exists ✅ (loading module...)";
+      } catch (e) {
+        d.textContent = `debug: fetch error: ${e.name}`;
+      }
+    })();
+  </script>
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>
