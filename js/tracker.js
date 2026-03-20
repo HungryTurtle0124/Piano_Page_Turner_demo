@@ -198,6 +198,8 @@ export function createTracker(ui, pdf, recorder) {
 
     const f = computeFeatures(lm);
     const { turnIntentX, turnIntentY } = computeIntent(f);
+    
+    console.log("gaze_y", f.gaze_y, "face_cy", f.face_cy, "turnY", turnIntentY);
 
     lastF = f;
     updateMeters(turnIntentX, turnIntentY);
